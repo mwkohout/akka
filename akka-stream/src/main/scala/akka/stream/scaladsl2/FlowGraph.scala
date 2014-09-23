@@ -8,7 +8,6 @@ import scalax.collection.edge.LkDiEdge
 import scalax.collection.mutable.Graph
 import scalax.collection.immutable.{ Graph ⇒ ImmutableGraph }
 import org.reactivestreams.Subscriber
-import akka.stream.impl.BlackholeSubscriber
 import org.reactivestreams.Publisher
 import akka.stream.impl2.Ast
 
@@ -86,6 +85,7 @@ object Broadcast {
    * is called and those instances are not `equal`.
    */
   def apply[T]: Broadcast[T] = new Broadcast[T](None)
+
   /**
    * Create a named `Broadcast` vertex with the specified input type.
    * Note that a `Broadcast` with a specific name can only be used at one place (one vertex)
@@ -93,17 +93,21 @@ object Broadcast {
    * returns instances that are `equal`.
    */
   def apply[T](name: String): Broadcast[T] = new Broadcast[T](Some(name))
+
+  // FIXME #15946 remove default arguments
+  def apply[T](minimumOutputCount: Int): Broadcast[T] = new Broadcast[T](None, minimumOutputCount = minimumOutputCount)
 }
 /**
  * Fan-out the stream to several streams. Each element is produced to
  * the other streams. It will not shutdown until the subscriptions for at least
  * two downstream subscribers have been established.
  */
-final class Broadcast[T](override val name: Option[String]) extends FlowGraphInternal.InternalVertex with Junction[T] {
+final class Broadcast[T](override val name: Option[String], override val minimumOutputCount: Int = 2) extends FlowGraphInternal.InternalVertex with Junction[T] {
   override private[akka] def vertex = this
   override def minimumInputCount: Int = 1
   override def maximumInputCount: Int = 1
-  override def minimumOutputCount: Int = 2
+  // FIXME #15946 remove default arguments
+  //override def minimumOutputCount: Int = 2
   override def maximumOutputCount: Int = Int.MaxValue
 
   override private[akka] def astNode = Ast.Broadcast
@@ -529,7 +533,8 @@ class FlowGraphBuilder private (graph: Graph[FlowGraphInternal.Vertex, LkDiEdge]
     require(graph.exists(graph having ((node = { n ⇒ n.isLeaf && n.diPredecessors.isEmpty }))),
       "Graph must have at least one source")
 
-    require(graph.isConnected, "Graph must be connected")
+    // FIXME: Do we really want to enforce that graphs are fully connected?
+    //require(graph.isConnected, "Graph must be connected")
   }
 
 }

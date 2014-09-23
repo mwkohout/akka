@@ -69,6 +69,8 @@ private[akka] object Ast {
     override def name = "buffer"
   }
 
+  case class GenericProcessor(propsCreator: FlowMaterializer ⇒ Props, override val name: String) extends AstNode
+
   sealed trait JunctionAstNode {
     def name: String
   }
@@ -92,7 +94,6 @@ private[akka] object Ast {
   case object Concat extends FanInAstNode {
     override def name = "concat"
   }
-
 }
 
 /**
@@ -104,15 +105,13 @@ case class ActorBasedFlowMaterializer(override val settings: MaterializerSetting
                                       namePrefix: String)
   extends FlowMaterializer(settings) {
 
-  import akka.stream.impl2.Ast._
-
   def withNamePrefix(name: String): FlowMaterializer = this.copy(namePrefix = name)
 
   private def nextFlowNameCount(): Long = flowNameCounter.incrementAndGet()
 
   private def createFlowName(): String = s"$namePrefix-${nextFlowNameCount()}"
 
-  @tailrec private def processorChain(topSubscriber: Subscriber[_], ops: immutable.Seq[AstNode],
+  @tailrec private def processorChain(topSubscriber: Subscriber[_], ops: immutable.Seq[Ast.AstNode],
                                       flowName: String, n: Int): Subscriber[_] = {
     ops match {
       case op :: tail ⇒
@@ -177,12 +176,12 @@ case class ActorBasedFlowMaterializer(override val settings: MaterializerSetting
     new MaterializedFlow(source, sourceValue, sink, sinkValue)
   }
 
-  private val identityTransform = Transform("identity", () ⇒
+  private val identityTransform = Ast.Transform("identity", () ⇒
     new Transformer[Any, Any] {
       override def onNext(element: Any) = List(element)
     })
 
-  protected def processorForNode(op: AstNode, flowName: String, n: Int): Processor[Any, Any] = {
+  protected def processorForNode(op: Ast.AstNode, flowName: String, n: Int): Processor[Any, Any] = {
     val impl = actorOf(ActorProcessorFactory.props(this, op), s"$flowName-$n-${op.name}")
     ActorProcessorFactory(impl)
   }
@@ -290,16 +289,17 @@ private[akka] object ActorProcessorFactory {
   def props(materializer: FlowMaterializer, op: AstNode): Props = {
     val settings = materializer.settings
     (op match {
-      case t: Transform      ⇒ Props(new TransformProcessorImpl(settings, t.mkTransformer()))
-      case t: TimerTransform ⇒ Props(new TimerTransformerProcessorsImpl(settings, t.mkTransformer()))
-      case m: MapFuture      ⇒ Props(new MapFutureProcessorImpl(settings, m.f))
-      case g: GroupBy        ⇒ Props(new GroupByProcessorImpl(settings, g.f))
-      case tt: PrefixAndTail ⇒ Props(new PrefixAndTailImpl(settings, tt.n))
-      case s: SplitWhen      ⇒ Props(new SplitWhenProcessorImpl(settings, s.p))
-      case ConcatAll         ⇒ Props(new ConcatAllImpl(materializer))
-      case cf: Conflate      ⇒ Props(new ConflateImpl(settings, cf.seed, cf.aggregate))
-      case ex: Expand        ⇒ Props(new ExpandImpl(settings, ex.seed, ex.extrapolate))
-      case bf: Buffer        ⇒ Props(new BufferImpl(settings, bf.size, bf.overflowStrategy))
+      case t: Transform         ⇒ Props(new TransformProcessorImpl(settings, t.mkTransformer()))
+      case t: TimerTransform    ⇒ Props(new TimerTransformerProcessorsImpl(settings, t.mkTransformer()))
+      case m: MapFuture         ⇒ Props(new MapFutureProcessorImpl(settings, m.f))
+      case g: GroupBy           ⇒ Props(new GroupByProcessorImpl(settings, g.f))
+      case tt: PrefixAndTail    ⇒ Props(new PrefixAndTailImpl(settings, tt.n))
+      case s: SplitWhen         ⇒ Props(new SplitWhenProcessorImpl(settings, s.p))
+      case ConcatAll            ⇒ Props(new ConcatAllImpl(materializer))
+      case cf: Conflate         ⇒ Props(new ConflateImpl(settings, cf.seed, cf.aggregate))
+      case ex: Expand           ⇒ Props(new ExpandImpl(settings, ex.seed, ex.extrapolate))
+      case bf: Buffer           ⇒ Props(new BufferImpl(settings, bf.size, bf.overflowStrategy))
+      case gp: GenericProcessor ⇒ gp.propsCreator(materializer)
     }).withDispatcher(settings.dispatcher)
   }
 
