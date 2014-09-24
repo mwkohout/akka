@@ -68,7 +68,7 @@ private[akka] class TcpListenStreamActor(bindCmd: Tcp.Bind,
         listener ! ResumeAccepting(1)
         val publisher = ActorPublisher[IncomingTcpConnection](self)
         val mf = connectionHandler.withSource(PublisherSource(publisher)).run()
-        requester ! StreamTcp.TcpServerBinding(localAddress, mf, TcpListenStreamActor.this)
+        requester ! new StreamTcp.TcpServerBinding(localAddress, mf, TcpListenStreamActor.this)
         subreceive.become(running)
       case f: CommandFailed ⇒
         val ex = new TcpListenStreamException("Bind failed")

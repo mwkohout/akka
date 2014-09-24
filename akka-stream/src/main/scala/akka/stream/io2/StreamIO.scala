@@ -29,7 +29,17 @@ object StreamTcp extends ExtensionId[StreamTcpExt] with ExtensionIdProvider {
                                    pipeline: MaterializedFlowGraph) {
   }
 
-  case class TcpServerBinding(localAddress: InetSocketAddress, connectionFlow: MaterializedFlow, closeable: Closeable)
+  case class TcpServerBinding(localAddress: InetSocketAddress, connectionFlow: MaterializedFlow) extends Closeable {
+
+    private var closeable: Option[Closeable] = None
+
+    def this(localAddress: InetSocketAddress, connectionFlow: MaterializedFlow, closeable: Closeable) = {
+      this(localAddress, connectionFlow)
+      this.closeable = Some(closeable)
+    }
+
+    override def close() = closeable.foreach(_.close())
+  }
 
   case class IncomingTcpConnection(remoteAddress: InetSocketAddress,
                                    tcpFlow: ProcessorFlow[ByteString, ByteString])
@@ -87,7 +97,7 @@ object StreamTcp extends ExtensionId[StreamTcpExt] with ExtensionIdProvider {
   }
 
   /**
-   * The Bind message is send to the StreamTcp manager actor, which is obtained via
+   * The Bind message is sent to the StreamTcp manager actor, which is obtained via
    * `IO(StreamTcp)`, in order to bind to a listening socket. The manager
    * replies with a [[StreamTcp.TcpServerBinding]]. If the local port is set to 0 in
    * the Bind message, then the [[StreamTcp.TcpServerBinding]] message should be inspected to find
@@ -164,7 +174,7 @@ object StreamTcpMessage {
     StreamTcp.Connect(pipeline, remoteAddress, materializer = Option(materailizer))
 
   /**
-   * Java API: The Bind message is send to the StreamTcp manager actor, which is obtained via
+   * Java API: The Bind message is sent to the StreamTcp manager actor, which is obtained via
    * `StreamTcp.get(system).manager()`, in order to bind to a listening socket. The manager
    * replies with a [[StreamTcp.TcpServerBinding]]. If the local port is set to 0 in
    * the Bind message, then the [[StreamTcp.TcpServerBinding]] message should be inspected to find

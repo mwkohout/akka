@@ -235,6 +235,6 @@ trait TcpHelper { this: TestKitBase ⇒
       ms.getSinkFor(tp).subscribe(ms.getSourceFor(ts))
     }
     val binding = bind(FlowFrom[IncomingTcpConnection].withSink(foreachSink), serverAddress)
-    new EchoServer(binding.connectionFlow.getSinkFor(foreachSink), binding.closeable)
+    new EchoServer(binding.connectionFlow.getSinkFor(foreachSink), binding)
   }
 }
