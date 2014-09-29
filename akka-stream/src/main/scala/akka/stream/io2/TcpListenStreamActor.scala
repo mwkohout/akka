@@ -9,10 +9,12 @@ import akka.actor._
 import akka.io.Tcp._
 import akka.io.{ IO, Tcp }
 import akka.stream.impl._
-import akka.stream.impl2.Ast.GenericProcessor
+import akka.stream.impl2.ActorBasedFlowMaterializer
 import akka.stream.io2.StreamTcp.IncomingTcpConnection
-import akka.stream.scaladsl2.{ ProcessorFlow, PublisherSource, FlowMaterializer, FlowWithSink }
+import akka.stream.io2.TcpListenStreamActor.TCPSinkSource
+import akka.stream.scaladsl2._
 import akka.util.ByteString
+import org.reactivestreams.{ Subscriber, Publisher }
 import scala.util.control.NoStackTrace
 
 /**
@@ -26,6 +28,42 @@ private[akka] object TcpListenStreamActor {
             connectionHandler: FlowWithSink[IncomingTcpConnection, IncomingTcpConnection],
             materializer: FlowMaterializer): Props = {
     Props(new TcpListenStreamActor(bindCmd, requester, connectionHandler)(materializer))
+  }
+
+  final class TCPSinkSource(propser: (FlowMaterializer) ⇒ Props, name: String) {
+    private var _processor: ActorProcessor[ByteString, ByteString] = null
+    private def processor(materializer: ActorBasedFlowMaterializer, flowName: String): ActorProcessor[ByteString, ByteString] = this.synchronized {
+      if (_processor ne null)
+        _processor
+      else {
+        _processor = ActorProcessor(materializer.actorOf(propser(materializer), s"$flowName-$name"))
+        _processor
+      }
+    }
+
+    object sink extends SimpleSink[ByteString] {
+      override def attach(flowPublisher: Publisher[ByteString], materializer: ActorBasedFlowMaterializer, flowName: String): Unit = {
+        val p = processor(materializer, flowName)
+        flowPublisher.subscribe(p)
+      }
+
+      override def create(materializer: ActorBasedFlowMaterializer, flowName: String): Subscriber[ByteString] =
+        processor(materializer, flowName)
+
+      override def isActive: Boolean = true
+    }
+
+    object source extends SimpleSource[ByteString] {
+      override def attach(flowSubscriber: Subscriber[ByteString], materializer: ActorBasedFlowMaterializer, flowName: String): Unit = {
+        val p = processor(materializer, flowName)
+        p.subscribe(flowSubscriber)
+      }
+
+      override def create(materializer: ActorBasedFlowMaterializer, flowName: String): Publisher[ByteString] =
+        processor(materializer, flowName)
+
+      override def isActive = true
+    }
   }
 
 }
@@ -124,8 +162,8 @@ private[akka] class TcpListenStreamActor(bindCmd: Tcp.Bind,
       TcpStreamActor.inboundProps(connection, materializer)
     }
 
-    val flow = ProcessorFlow[ByteString, ByteString](List(GenericProcessor(tcpStreamActorCreator, encName(connected.localAddress, connected.remoteAddress))))
-    primaryOutputs.enqueueOutputElement(StreamTcp.IncomingTcpConnection(connected.remoteAddress, flow))
+    val tcpSinkSource = new TCPSinkSource(tcpStreamActorCreator, encName(connected.localAddress, connected.remoteAddress))
+    primaryOutputs.enqueueOutputElement(StreamTcp.IncomingTcpConnection(connected.remoteAddress, tcpSinkSource.sink, tcpSinkSource.source))
   }
 
   def fail(e: Throwable): Unit = {

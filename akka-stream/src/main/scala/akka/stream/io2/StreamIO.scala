@@ -8,7 +8,6 @@ import akka.actor.SupervisorStrategy.Stop
 import akka.io.Inet.SocketOption
 import akka.io.{ Tcp, IO }
 import akka.japi.Util
-import akka.stream.io2.StreamTcp.IncomingTcpConnection
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl2._
 import akka.util.ByteString
@@ -42,7 +41,8 @@ object StreamTcp extends ExtensionId[StreamTcpExt] with ExtensionIdProvider {
   }
 
   case class IncomingTcpConnection(remoteAddress: InetSocketAddress,
-                                   tcpFlow: ProcessorFlow[ByteString, ByteString])
+                                   outbound: Sink[ByteString],
+                                   inbound: Source[ByteString])
 
   /**
    * The Connect message is sent to the StreamTcp manager actor, which is obtained via
@@ -143,6 +143,7 @@ object StreamTcp extends ExtensionId[StreamTcpExt] with ExtensionIdProvider {
  * Java API: Factory methods for the messages of `StreamTcp`.
  */
 object StreamTcpMessage {
+  import StreamTcp.{ Connect, Bind, IncomingTcpConnection }
   /**
    * Java API: The Connect message is sent to the StreamTcp manager actor, which is obtained via
    * `StreamTcp.get(system).manager()`. The manager replies with a [[StreamTcp.OutgoingTcpConnection]]
@@ -163,15 +164,15 @@ object StreamTcpMessage {
     localAddress: InetSocketAddress,
     options: java.lang.Iterable[SocketOption],
     connectTimeout: Duration,
-    idleTimeout: Duration): StreamTcp.Connect =
-    StreamTcp.Connect(pipeline, remoteAddress, Option(localAddress), Option(materializer), Util.immutableSeq(options), connectTimeout, idleTimeout)
+    idleTimeout: Duration): Connect =
+    Connect(pipeline, remoteAddress, Option(localAddress), Option(materializer), Util.immutableSeq(options), connectTimeout, idleTimeout)
 
   /**
    * Java API: Message to Connect to the given `remoteAddress` without binding to a local address and without
    * specifying options.
    */
-  def connect(pipeline: PartialFlowGraph, materailizer: FlowMaterializer, remoteAddress: InetSocketAddress): StreamTcp.Connect =
-    StreamTcp.Connect(pipeline, remoteAddress, materializer = Option(materailizer))
+  def connect(pipeline: PartialFlowGraph, materailizer: FlowMaterializer, remoteAddress: InetSocketAddress): Connect =
+    Connect(pipeline, remoteAddress, materializer = Option(materailizer))
 
   /**
    * Java API: The Bind message is sent to the StreamTcp manager actor, which is obtained via
@@ -192,13 +193,13 @@ object StreamTcpMessage {
            backlog: Int,
            options: java.lang.Iterable[SocketOption],
            idleTimeout: Duration): StreamTcp.Bind =
-    StreamTcp.Bind(connectionHandler, localAddress, Some(materializer), backlog, Util.immutableSeq(options), idleTimeout)
+    Bind(connectionHandler, localAddress, Some(materializer), backlog, Util.immutableSeq(options), idleTimeout)
 
   /**
    * Java API: Message to open a listening socket without specifying options.
    */
   def bind(connectionHandler: FlowWithSink[IncomingTcpConnection, IncomingTcpConnection], localAddress: InetSocketAddress): StreamTcp.Bind =
-    StreamTcp.Bind(connectionHandler, localAddress)
+    Bind(connectionHandler, localAddress)
 }
 
 /**
