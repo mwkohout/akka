@@ -375,6 +375,9 @@ private[akka] object FlowGraphInternal {
     val outputPort: Int) {
 
     override def toString: String = flow.toString
+
+    def withFlow(newFlow: ProcessorFlow[Any, Any]): EdgeLabel =
+      EdgeLabel(qualifier)(newFlow, inputPort, outputPort)
   }
 
 }
@@ -444,6 +447,48 @@ class FlowGraphBuilder private (graph: Graph[FlowGraphInternal.Vertex, LkDiEdge]
     this
   }
 
+  def addEdge[In, Out](source: Source[In], flow: ProcessorFlow[In, Out], sink: Sink[Out]): this.type = {
+    val sourceVertex = SourceVertex(source)
+    val sinkVertex = SinkVertex(sink)
+    checkAddSourceSinkPrecondition(sourceVertex)
+    checkAddSourceSinkPrecondition(sinkVertex)
+    addGraphEdge(sourceVertex, sinkVertex, flow, inputPort = UnlabeledPort, outputPort = UnlabeledPort)
+    this
+  }
+
+  def addEdge[In, Out](flow: FlowWithSource[In, Out], sink: Sink[Out]): this.type = {
+    addEdge(flow.input, flow.withoutSource, sink)
+    this
+  }
+
+  def addEdge[In, Out](source: Source[In], flow: FlowWithSink[In, Out]): this.type = {
+    addEdge(source, flow.withoutSink, flow.output)
+    this
+  }
+
+  def addEdge[In, Out](source: UndefinedSource[In], flow: ProcessorFlow[In, Out], sink: UndefinedSink[Out]): this.type = {
+    checkAddSourceSinkPrecondition(source)
+    checkAddSourceSinkPrecondition(sink)
+    addGraphEdge(source, sink, flow, inputPort = UnlabeledPort, outputPort = UnlabeledPort)
+    this
+  }
+
+  def addEdge[In, Out](source: UndefinedSource[In], flow: ProcessorFlow[In, Out], sink: Sink[Out]): this.type = {
+    val sinkVertex = SinkVertex(sink)
+    checkAddSourceSinkPrecondition(source)
+    checkAddSourceSinkPrecondition(sinkVertex)
+    addGraphEdge(source, sinkVertex, flow, inputPort = UnlabeledPort, outputPort = UnlabeledPort)
+    this
+  }
+
+  def addEdge[In, Out](source: Source[In], flow: ProcessorFlow[In, Out], sink: UndefinedSink[Out]): this.type = {
+    val sourceVertex = SourceVertex(source)
+    checkAddSourceSinkPrecondition(sourceVertex)
+    checkAddSourceSinkPrecondition(sink)
+    addGraphEdge(sourceVertex, sink, flow, inputPort = UnlabeledPort, outputPort = UnlabeledPort)
+    this
+  }
+
   private def addGraphEdge[In, Out](from: Vertex, to: Vertex, flow: ProcessorFlow[In, Out], inputPort: Int, outputPort: Int): Unit = {
     if (edgeQualifier == Int.MaxValue) throw new IllegalArgumentException(s"Too many edges")
     val label = EdgeLabel(edgeQualifier)(flow.asInstanceOf[ProcessorFlow[Any, Any]], inputPort, outputPort)
@@ -459,6 +504,36 @@ class FlowGraphBuilder private (graph: Graph[FlowGraphInternal.Vertex, LkDiEdge]
         graph.remove(existing)
         graph.addLEdge(edge.from.value, SinkVertex(sink))(edge.label)
       case None ⇒ throw new IllegalArgumentException(s"No matching UndefinedSink [${token}]")
+    }
+    this
+  }
+
+  def attachFlowWithSink[A, B](token: UndefinedSink[A], flowWithSink: FlowWithSink[A, B]): this.type = {
+    graph.find(token) match {
+      case Some(existing) ⇒
+        require(existing.value.isInstanceOf[UndefinedSink[_]], s"Flow already attached to a sink [${existing.value}]")
+        val edge = existing.incoming.head
+        graph.remove(existing)
+        val existingEdgeLabel = edge.label.asInstanceOf[EdgeLabel]
+        val flow = existingEdgeLabel.flow.append(flowWithSink.asInstanceOf[FlowWithSink[Any, B]].withoutSink)
+        val label = existingEdgeLabel.withFlow(flow)
+        graph.addLEdge(edge.from.value, SinkVertex(flowWithSink.output))(label)
+      case None ⇒ throw new IllegalArgumentException(s"No matching UndefinedSink [${token}]")
+    }
+    this
+  }
+
+  def attachFlowWithSource[A, B](token: UndefinedSource[B], flowWithSource: FlowWithSource[A, B]): this.type = {
+    graph.find(token) match {
+      case Some(existing) ⇒
+        require(existing.value.isInstanceOf[UndefinedSource[_]], s"Flow already attached to a source [${existing.value}]")
+        val edge = existing.outgoing.head
+        graph.remove(existing)
+        val existingEdgeLabel = edge.label.asInstanceOf[EdgeLabel]
+        val flow = existingEdgeLabel.flow.prepend(flowWithSource.asInstanceOf[FlowWithSource[Any, B]].withoutSource)
+        val label = existingEdgeLabel.withFlow(flow)
+        graph.addLEdge(SourceVertex(flowWithSource.input), edge.to.value)(label)
+      case None ⇒ throw new IllegalArgumentException(s"No matching UndefinedSource [${token}]")
     }
     this
   }
@@ -637,6 +712,37 @@ class FlowGraph private[akka] (private[akka] val graph: ImmutableGraph[FlowGraph
    * Materialize the `FlowGraph` and attach all sinks and sources.
    */
   def run()(implicit materializer: FlowMaterializer): MaterializedFlowGraph = {
+    val edges = graph.edges
+    if (edges.size == 1) {
+      val edge = edges.head
+      (edge.from.value, edge.to.value) match {
+        case (src: SourceVertex, sink: SinkVertex) ⇒
+          val flow = edge.label.asInstanceOf[EdgeLabel].flow
+          runSimple(src, sink, flow)
+        case _ ⇒
+          runGraph()
+      }
+    } else
+      runGraph()
+  }
+
+  /**
+   * Run FlowGraph that only contains one edge from a `Source` to a `Sink`.
+   */
+  private def runSimple(sourceVertex: SourceVertex, sinkVertex: SinkVertex, flow: ProcessorFlow[Any, Any])(implicit materializer: FlowMaterializer): MaterializedFlowGraph = {
+    val mf = flow.withSource(sourceVertex.source).withSink(sinkVertex.sink.asInstanceOf[Sink[Any]]).run()
+    val materializedSources: Map[SourceWithKey[_, _], Any] = sourceVertex match {
+      case SourceVertex(src: SourceWithKey[_, _]) ⇒ Map(src -> mf.getSourceFor(src))
+      case _                                      ⇒ Map.empty
+    }
+    val materializedSinks: Map[SinkWithKey[_, _], Any] = sinkVertex match {
+      case SinkVertex(sink: SinkWithKey[_, _]) ⇒ Map(sink -> mf.getSinkFor(sink))
+      case _                                   ⇒ Map.empty
+    }
+    new MaterializedFlowGraph(materializedSources, materializedSinks)
+  }
+
+  private def runGraph()(implicit materializer: FlowMaterializer): MaterializedFlowGraph = {
     import scalax.collection.GraphTraversal._
 
     // start with sinks
@@ -828,6 +934,13 @@ object FlowGraphImplicits {
       builder.addEdge(source, ProcessorFlow.empty[In], sink)
       sink.next
     }
+
+    def ~>(sink: Sink[In])(implicit builder: FlowGraphBuilder): Unit =
+      builder.addEdge(source, ProcessorFlow.empty[In], sink)
+
+    def ~>(flow: FlowWithSink[In, _])(implicit builder: FlowGraphBuilder): Unit =
+      builder.addEdge(source, flow)
+
   }
 
   class SourceNextStep[In, Out](source: Source[In], flow: ProcessorFlow[In, Out], builder: FlowGraphBuilder) {
@@ -835,6 +948,9 @@ object FlowGraphImplicits {
       builder.addEdge(source, flow, sink)
       sink.next
     }
+
+    def ~>(sink: Sink[Out]): Unit =
+      builder.addEdge(source, flow, sink)
   }
 
   implicit class JunctionOps[In](val junction: JunctionOutPort[In]) extends AnyVal {
@@ -877,6 +993,12 @@ object FlowGraphImplicits {
       builder.addEdge(flow, sink)
       sink.next
     }
+
+    def ~>(sink: Sink[Out])(implicit builder: FlowGraphBuilder): Unit =
+      builder.addEdge(flow, sink)
+
+    def ~>[U](sinkFlow: FlowWithSink[Out, U])(implicit builder: FlowGraphBuilder): Unit =
+      builder.addEdge(flow.append(sinkFlow.withoutSink), sinkFlow.output)
   }
 
   implicit class UndefinedSourceOps[In](val source: UndefinedSource[In]) extends AnyVal {

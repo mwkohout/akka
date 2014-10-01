@@ -1,12 +1,12 @@
 package akka.stream.scaladsl2
 
 import akka.stream.testkit.AkkaSpec
-
 import akka.stream.{ OverflowStrategy, MaterializerSettings }
 import akka.stream.testkit.{ StreamTestKit, AkkaSpec }
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import akka.stream.scaladsl2.FlowGraphImplicits._
+import akka.stream.testkit.StreamTestKit.SubscriberProbe
 
 class GraphOpsIntegrationSpec extends AkkaSpec {
 
@@ -81,6 +81,53 @@ class GraphOpsIntegrationSpec extends AkkaSpec {
       Await.result(g.getSinkFor(resultFuture9), 3.seconds).sorted should be(List(3, 5, 7, 7))
       Await.result(g.getSinkFor(resultFuture10), 3.seconds).sorted should be(List(3, 5, 7))
 
+    }
+
+    "be able to run plain flow" in {
+      val p = FlowFrom(List(1, 2, 3)).toPublisher()
+      val s = SubscriberProbe[Int]
+      val flow = FlowFrom[Int].map(_ * 2)
+      FlowGraph { implicit builder ⇒
+        import FlowGraphImplicits._
+        PublisherSource(p) ~> flow ~> SubscriberSink(s)
+      }.run()
+      val sub = s.expectSubscription()
+      sub.request(10)
+      s.expectNext(1 * 2)
+      s.expectNext(2 * 2)
+      s.expectNext(3 * 2)
+      s.expectComplete()
+    }
+
+    "support continue transformation from undefined source/sink" in {
+      val input1 = UndefinedSource[Int]
+      val output1 = UndefinedSink[Int]
+      val output2 = UndefinedSink[String]
+      val partial = PartialFlowGraph { implicit builder ⇒
+        val bcast = Broadcast[String]("bcast")
+        input1 ~> FlowFrom[Int].map(_.toString) ~> bcast ~> FlowFrom[String].map(_.toInt) ~> output1
+        bcast ~> FlowFrom[String].map("elem-" + _) ~> output2
+      }
+
+      val s1 = SubscriberProbe[Int]
+      val s2 = SubscriberProbe[String]
+      FlowGraph(partial) { builder ⇒
+        builder.attachFlowWithSource(input1, FlowFrom(List(0, 1, 2).map(_ + 1)))
+        builder.attachFlowWithSink(output1, FlowFrom[Int].filter(n ⇒ (n % 2) != 0).withSink(SubscriberSink(s1)))
+        builder.attachFlowWithSink(output2, FlowFrom[String].map(_.toUpperCase).withSink(SubscriberSink(s2)))
+      }.run()
+
+      val sub1 = s1.expectSubscription()
+      val sub2 = s2.expectSubscription()
+      sub1.request(10)
+      sub2.request(10)
+      s1.expectNext(1)
+      s1.expectNext(3)
+      s1.expectComplete()
+      s2.expectNext("ELEM-1")
+      s2.expectNext("ELEM-2")
+      s2.expectNext("ELEM-3")
+      s2.expectComplete()
     }
 
   }
