@@ -15,9 +15,9 @@ class FlowFoldSpec extends AkkaSpec {
 
     "fold" in {
       val input = 1 to 100
-      val foldSink = FoldSink[Int, Int](0)(_ + _)
-      val mf = FlowFrom(input).withSink(foldSink).run()
-      val future = foldSink.future(mf)
+      val foldDrain = FoldDrain[Int, Int](0)(_ + _)
+      val mf = Source(input).append(foldDrain).run()
+      val future = foldDrain.future(mf)
       val expected = input.fold(0)(_ + _)
       Await.result(future, 5.seconds) should be(expected)
     }

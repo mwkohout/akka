@@ -132,57 +132,57 @@ case class ActorBasedFlowMaterializer(override val settings: MaterializerSetting
   }
 
   // Ops come in reverse order
-  override def materialize[In, Out](source: Source[In], sink: Sink[Out], ops: List[Ast.AstNode]): MaterializedFlow = {
+  override def materialize[In, Out](faucet: Faucet[In], drain: Drain[Out], ops: List[Ast.AstNode]): MaterializedPipe = {
     val flowName = createFlowName()
 
-    def attachSink(pub: Publisher[Out]) = sink match {
-      case s: SimpleSink[Out]     ⇒ s.attach(pub, this, flowName)
-      case s: SinkWithKey[Out, _] ⇒ s.attach(pub, this, flowName)
-      case _                      ⇒ throw new MaterializationException("unknown Sink type " + sink.getClass)
+    def attachDrain(pub: Publisher[Out]) = drain match {
+      case s: SimpleDrain[Out]     ⇒ s.attach(pub, this, flowName)
+      case s: DrainWithKey[Out, _] ⇒ s.attach(pub, this, flowName)
+      case _                       ⇒ throw new MaterializationException("unknown Drain type " + drain.getClass)
     }
-    def attachSource(sub: Subscriber[In]) = source match {
-      case s: SimpleSource[In]     ⇒ s.attach(sub, this, flowName)
-      case s: SourceWithKey[In, _] ⇒ s.attach(sub, this, flowName)
-      case _                       ⇒ throw new MaterializationException("unknown Source type " + sink.getClass)
+    def attachFaucet(sub: Subscriber[In]) = faucet match {
+      case s: SimpleFaucet[In]     ⇒ s.attach(sub, this, flowName)
+      case s: FaucetWithKey[In, _] ⇒ s.attach(sub, this, flowName)
+      case _                       ⇒ throw new MaterializationException("unknown Faucet type " + drain.getClass)
     }
-    def createSink() = sink.asInstanceOf[Sink[In]] match {
-      case s: SimpleSink[In]     ⇒ s.create(this, flowName) -> (())
-      case s: SinkWithKey[In, _] ⇒ s.create(this, flowName)
-      case _                     ⇒ throw new MaterializationException("unknown Sink type " + sink.getClass)
+    def createDrain() = drain.asInstanceOf[Drain[In]] match {
+      case s: SimpleDrain[In]     ⇒ s.create(this, flowName) -> (())
+      case s: DrainWithKey[In, _] ⇒ s.create(this, flowName)
+      case _                      ⇒ throw new MaterializationException("unknown Drain type " + drain.getClass)
     }
-    def createSource() = source.asInstanceOf[Source[Out]] match {
-      case s: SimpleSource[Out]     ⇒ s.create(this, flowName) -> (())
-      case s: SourceWithKey[Out, _] ⇒ s.create(this, flowName)
-      case _                        ⇒ throw new MaterializationException("unknown Source type " + sink.getClass)
+    def createFaucet() = faucet.asInstanceOf[Faucet[Out]] match {
+      case s: SimpleFaucet[Out]     ⇒ s.create(this, flowName) -> (())
+      case s: FaucetWithKey[Out, _] ⇒ s.create(this, flowName)
+      case _                        ⇒ throw new MaterializationException("unknown Faucet type " + drain.getClass)
     }
     def isActive(s: AnyRef) = s match {
-      case source: SimpleSource[_]     ⇒ source.isActive
-      case source: SourceWithKey[_, _] ⇒ source.isActive
-      case sink: SimpleSink[_]         ⇒ sink.isActive
-      case sink: SinkWithKey[_, _]     ⇒ sink.isActive
-      case _: Source[_]                ⇒ throw new MaterializationException("unknown Source type " + sink.getClass)
-      case _: Sink[_]                  ⇒ throw new MaterializationException("unknown Sink type " + sink.getClass)
+      case faucet: SimpleFaucet[_]     ⇒ faucet.isActive
+      case faucet: FaucetWithKey[_, _] ⇒ faucet.isActive
+      case drain: SimpleDrain[_]       ⇒ drain.isActive
+      case drain: DrainWithKey[_, _]   ⇒ drain.isActive
+      case _: Faucet[_]                ⇒ throw new MaterializationException("unknown Faucet type " + drain.getClass)
+      case _: Drain[_]                 ⇒ throw new MaterializationException("unknown Drain type " + drain.getClass)
     }
 
-    val (sourceValue, sinkValue) =
+    val (faucetValue, drainValue) =
       if (ops.isEmpty) {
-        if (isActive(sink)) {
-          val (sub, value) = createSink()
-          (attachSource(sub), value)
-        } else if (isActive(source)) {
-          val (pub, value) = createSource()
-          (value, attachSink(pub))
+        if (isActive(drain)) {
+          val (sub, value) = createDrain()
+          (attachFaucet(sub), value)
+        } else if (isActive(faucet)) {
+          val (pub, value) = createFaucet()
+          (value, attachDrain(pub))
         } else {
           val id: Processor[In, Out] = processorForNode(identityTransform, flowName, 1).asInstanceOf[Processor[In, Out]]
-          (attachSource(id), attachSink(id))
+          (attachFaucet(id), attachDrain(id))
         }
       } else {
         val opsSize = ops.size
         val last = processorForNode(ops.head, flowName, opsSize).asInstanceOf[Processor[Any, Out]]
         val first = processorChain(last, ops.tail, flowName, opsSize - 1).asInstanceOf[Processor[In, Any]]
-        (attachSource(first), attachSink(last))
+        (attachFaucet(first), attachDrain(last))
       }
-    new MaterializedFlow(source, sourceValue, sink, sinkValue)
+    new MaterializedPipe(faucet, faucetValue, drain, drainValue)
   }
 
   private val identityTransform = Ast.Transform("identity", () ⇒

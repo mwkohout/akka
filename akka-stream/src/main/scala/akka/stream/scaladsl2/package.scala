@@ -4,26 +4,30 @@
 package akka.stream
 
 /**
+ * TODO:ban rewrite this
+ */
+
+/**
  * Scala API: The flow DSL allows the formulation of stream transformations based on some
- * input. The starting point is called [[Source]] and can be a collection, an iterator,
+ * input. The starting point is called [[Faucet]] and can be a collection, an iterator,
  * a block of code which is evaluated repeatedly or a [[org.reactivestreams.Publisher]].
- * A flow with an attached `Source` is a [[FlowWithSource]] and is constructed
+ * A flow with an attached `Faucet` is a [[SourcePipe]] and is constructed
  * with the `apply` methods in [[FlowFrom]].
  *
- * A flow may also be defined without an attached input `Source` and that is then
- * a [[ProcessorFlow]]. The `Source` can be attached later with [[ProcessorFlow#withSource]]
- * and it becomes a [[FlowWithSource]].
+ * A flow may also be defined without an attached input `Faucet` and that is then
+ * a [[Pipe]]. The `Faucet` can be attached later with [[Pipe#withFaucet]]
+ * and it becomes a [[SourcePipe]].
  *
- * Transformations can appended to `FlowWithSource` and `ProcessorFlow` with the operations
- * defined in [[FlowOps]]. Each DSL element produces a new flow that can be further transformed,
+ * Transformations can appended to `SourcePipe` and `Pipe` with the operations
+ * defined in [[PipeOps]]. Each DSL element produces a new flow that can be further transformed,
  * building up a description of the complete transformation pipeline.
  *
- * The output of the flow can be attached to a [[Sink]] with [[FlowWithSource#withSink]]
- * and if it also has an attached `Source` it becomes a [[RunnableFlow]]. In order to execute
- * this pipeline the flow must be materialized by calling [[RunnableFlow#run]] on it.
+ * The output of the flow can be attached to a [[Drain]] with [[SourcePipe#withDrain]]
+ * and if it also has an attached `Faucet` it becomes a [[RunnablePipe]]. In order to execute
+ * this pipeline the flow must be materialized by calling [[RunnablePipe#run]] on it.
  *
- * You may also first attach the `Sink` to a `ProcessorFlow` with [[ProcessorFlow#withSink]]
- * and then it becomes a [[FlowWithSink]] and then attach the `Source` to make
+ * You may also first attach the `Drain` to a `Pipe` with [[Pipe#withDrain]]
+ * and then it becomes a [[SinkPipe]] and then attach the `Faucet` to make
  * it runnable.
  *
  * Flows can be wired together before they are materialized by appending or prepending them, or

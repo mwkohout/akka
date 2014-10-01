@@ -11,34 +11,34 @@ class FlowPrependSpec extends AkkaSpec with River {
   val settings = MaterializerSettings(system)
   implicit val materializer = FlowMaterializer(settings)
 
-  "ProcessorFlow" should {
-    "prepend ProcessorFlow" in riverOf[String] { subscriber ⇒
-      FlowFrom[String]
+  "Flow" should {
+    "prepend Flow" in riverOf[String] { subscriber ⇒
+      Flow[String]
         .prepend(otherFlow)
-        .withSource(IterableSource(elements))
+        .prepend(IterableFaucet(elements))
         .publishTo(subscriber)
     }
 
-    "prepend FlowWithSource" in riverOf[String] { subscriber ⇒
-      FlowFrom[String]
-        .prepend(otherFlow.withSource(IterableSource(elements)))
+    "prepend Source" in riverOf[String] { subscriber ⇒
+      Flow[String]
+        .prepend(otherFlow.prepend(IterableFaucet(elements)))
         .publishTo(subscriber)
     }
   }
 
-  "FlowWithSink" should {
-    "prepend ProcessorFlow" in riverOf[String] { subscriber ⇒
-      FlowFrom[String]
-        .withSink(SubscriberSink(subscriber))
+  "Sink" should {
+    "prepend Flow" in riverOf[String] { subscriber ⇒
+      Flow[String]
+        .append(SubscriberDrain(subscriber))
         .prepend(otherFlow)
-        .withSource(IterableSource(elements))
+        .prepend(Source(elements))
         .run()
     }
 
-    "prepend FlowWithSource" in riverOf[String] { subscriber ⇒
-      FlowFrom[String]
-        .withSink(SubscriberSink(subscriber))
-        .prepend(otherFlow.withSource(IterableSource(elements)))
+    "prepend Source" in riverOf[String] { subscriber ⇒
+      Flow[String]
+        .append(SubscriberDrain(subscriber))
+        .prepend(otherFlow.prepend(IterableFaucet(elements)))
         .run()
     }
   }

@@ -19,9 +19,9 @@ class GraphMergeSpec extends TwoStreamsSetup {
 
     "work in the happy case" in {
       // Different input sizes (4 and 6)
-      val source1 = FlowFrom((0 to 3).iterator)
-      val source2 = FlowFrom((4 to 9).iterator)
-      val source3 = FlowFrom(List.empty[Int].iterator)
+      val faucet1 = Pipe((0 to 3).iterator)
+      val faucet2 = Pipe((4 to 9).iterator)
+      val faucet3 = Pipe(List.empty[Int].iterator)
       val probe = StreamTestKit.SubscriberProbe[Int]()
 
       FlowGraph { implicit b ⇒
@@ -29,9 +29,9 @@ class GraphMergeSpec extends TwoStreamsSetup {
         val m2 = Merge[Int]("m2")
         val m3 = Merge[Int]("m3")
 
-        source1 ~> m1 ~> FlowFrom[Int].map(_ * 2) ~> m2 ~> FlowFrom[Int].map(_ / 2).map(_ + 1) ~> SubscriberSink(probe)
-        source2 ~> m1
-        source3 ~> m2
+        faucet1 ~> m1 ~> Pipe[Int].map(_ * 2) ~> m2 ~> Pipe[Int].map(_ / 2).map(_ + 1) ~> SubscriberDrain(probe)
+        faucet2 ~> m1
+        faucet3 ~> m2
 
       }.run()
 
@@ -48,24 +48,24 @@ class GraphMergeSpec extends TwoStreamsSetup {
     }
 
     "work with n-way merge" in {
-      val source1 = FlowFrom(List(1))
-      val source2 = FlowFrom(List(2))
-      val source3 = FlowFrom(List(3))
-      val source4 = FlowFrom(List(4))
-      val source5 = FlowFrom(List(5))
-      val source6 = FlowFrom(List.empty[Int])
+      val faucet1 = Pipe(List(1))
+      val faucet2 = Pipe(List(2))
+      val faucet3 = Pipe(List(3))
+      val faucet4 = Pipe(List(4))
+      val faucet5 = Pipe(List(5))
+      val faucet6 = Pipe(List.empty[Int])
 
       val probe = StreamTestKit.SubscriberProbe[Int]()
 
       FlowGraph { implicit b ⇒
         val merge = Merge[Int]("merge")
 
-        source1 ~> merge ~> FlowFrom[Int] ~> SubscriberSink(probe)
-        source2 ~> merge
-        source3 ~> merge
-        source4 ~> merge
-        source5 ~> merge
-        source6 ~> merge
+        faucet1 ~> merge ~> Pipe[Int] ~> SubscriberDrain(probe)
+        faucet2 ~> merge
+        faucet3 ~> merge
+        faucet4 ~> merge
+        faucet5 ~> merge
+        faucet6 ~> merge
 
       }.run()
 

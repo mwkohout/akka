@@ -22,10 +22,10 @@ class GraphZipSpec extends TwoStreamsSetup {
       FlowGraph { implicit b ⇒
         val zip = Zip[Int, String]
 
-        FlowFrom(1 to 4) ~> zip.left
-        FlowFrom(List("A", "B", "C", "D", "E", "F")) ~> zip.right
+        Pipe(1 to 4) ~> zip.left
+        Pipe(List("A", "B", "C", "D", "E", "F")) ~> zip.right
 
-        zip.out ~> SubscriberSink(probe)
+        zip.out ~> SubscriberDrain(probe)
       }.run()
 
       val subscription = probe.expectSubscription()
