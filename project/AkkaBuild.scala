@@ -288,7 +288,7 @@ object AkkaBuild extends Build {
   lazy val contrib = Project(
     id = "akka-contrib",
     base = file("akka-contrib"),
-    dependencies = Seq(remote, remoteTests % "test->test", cluster, clusterTools, persistence % "compile;test->provided")
+    dependencies = Seq(remote, remoteTests % "test->test", cluster, clusterTools, persistence % "compile;test->provided", stream)
   ).configs(MultiJvm)
 
   lazy val samplesSettings = parentSettings ++ ActivatorDist.settings
