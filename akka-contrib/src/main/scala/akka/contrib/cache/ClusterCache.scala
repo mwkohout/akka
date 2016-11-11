@@ -86,11 +86,12 @@ class ClusterCache(val vnodes: Int, val entity: Props, val role: String,
 
       case message: Any if message != shutdownMessage ⇒
         val entityId = extractEntityId(message)
-        val selectedRoutee = remoteLogic.select(entityId, clusterActors)
-        selectedRoutee == meRoutee match {
+        val remoteRoutee = remoteLogic.select(entityId, clusterActors)
+        remoteRoutee == meRoutee match {
           case true ⇒
             val localRoutee = localLogic.select(entityId, vNodesActors)
-          case false ⇒ selectedRoutee.send(message, sender())
+            localRoutee.send(message, sender())
+          case false ⇒ remoteRoutee.send(message, sender())
         }
     }
 
