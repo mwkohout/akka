@@ -106,7 +106,7 @@ private[cache] class ClusterRingListener(val local: Vector[ActorSelection], val 
       clusterInfo = (clusterInfo + (senderAddress → vnodes))
 
       rebuildRingAndUpdateSubscriber
-    case _ =>
+    case _ ⇒
       unhandled(message)
   }
 
