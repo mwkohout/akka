@@ -1,20 +1,18 @@
 package akka.contrib.cache
 
 import akka.actor._
-import akka.cluster.{ MemberStatus, Member, Cluster }
-import akka.cluster.ClusterEvent._
+import akka.cluster.Cluster
 import akka.routing.ActorSelectionRoutee
-import akka.testkit.TestActors.EchoActor
-import akka.testkit.{ TestProbe, TestActorRef, AkkaSpec }
-import org.mockito.Mockito
+import akka.testkit.{AkkaSpec, TestActorRef, TestProbe}
 import org.scalatest.GivenWhenThen
 import org.scalatest.mockito.MockitoSugar
 import org.scalatest.words.ShouldVerb
+
 import scala.language.implicitConversions
-import Mockito._
 
 //todo: use ClusterSingletonRestart2Spec as a template
-class ClusterCacheSpec extends AkkaSpec("""           //stolen from akka.cluster.ClusterSpec
+class ClusterCacheSpec extends AkkaSpec(
+  """           //stolen from akka.cluster.ClusterSpec
     akka.cluster {
       auto-down-unreachable-after = 0s
       periodic-tasks-initial-delay = 120 seconds // turn off scheduled tasks
@@ -25,14 +23,14 @@ class ClusterCacheSpec extends AkkaSpec("""           //stolen from akka.cluster
     akka.remote.log-remote-lifecycle-events = off
     akka.remote.netty.tcp.port = 0
     #akka.loglevel = DEBUG
-                                        """
+  """
 ) with MockitoSugar with GivenWhenThen with ShouldVerb {
 
   implicit val actorSelectionOrdering = Ordering.by[ActorSelection, String](as ⇒ as.pathString)
 
   "ClusterRingListener" should {
 
-    "Notify new cluster members of my local attributes" in {
+    "when they join the cluster I notify new cluster members of my vnodes" in {
 
       val selfAddress = system.asInstanceOf[ExtendedActorSystem].provider.getDefaultAddress
 
@@ -57,7 +55,7 @@ class ClusterCacheSpec extends AkkaSpec("""           //stolen from akka.cluster
       peerProbe.expectMsg(ClusterInfo(vnodes = localVnodes, address = selfAddress))
     }
 
-    "Notify my subscriber of cluster attribute changes" in {
+    "When another cluster member sends me clusterInfo messages I Notify my subscriber of valid cluster attribute changes" in {
 
       val selfAddress = system.asInstanceOf[ExtendedActorSystem].provider.getDefaultAddress
 
