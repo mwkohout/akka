@@ -13,10 +13,8 @@ import scala.concurrent.duration._
 import scala.util.{ Failure, Success }
 
 class ClusterCache(val vnodes: Int, val entity: Props, val role: String,
-                   extractEntityId: PartialFunction[Any, String],
-                   val cluster:     Cluster) extends UntypedActor {
+                   extractEntityId: PartialFunction[Any, String]) extends UntypedActor {
   implicit val materializer = ActorMaterializer()
-  cluster.subscribe(self, classOf[ClusterDomainEvent])
 
   val vNodeRange = Range(1, vnodes)
   val vNodesActors: Vector[ActorRef] = vNodeRange.map(index ⇒ context.system.actorOf(Props(classOf[LocalVNodeActor], entity, extractEntityId), index.toString)).toVector
@@ -26,7 +24,7 @@ class ClusterCache(val vnodes: Int, val entity: Props, val role: String,
     Props(
       classOf[ClusterRingListener],
       clusterRing,
-      self, cluster, self.path / "clusterListener"), "clusterListener")
+      self, self.path / "clusterListener"), "clusterListener")
   val logic = ConsistentHashingRoutingLogic(context.system, vnodes, extractEntityId)
 
   var leavingMembers = Set[UniqueAddress]()
@@ -71,8 +69,9 @@ class ClusterCache(val vnodes: Int, val entity: Props, val role: String,
 
 }
 
-private[cache] class ClusterRingListener(val local: Vector[ActorSelection], val subscriber: ActorRef, val cluster: Cluster, val peerPath: ActorPath) extends UntypedActor with ActorLogging {
+private[cache] class ClusterRingListener(val local: Vector[ActorSelection], val subscriber: ActorRef, val peerPath: ActorPath) extends UntypedActor with ActorLogging {
 
+  val cluster = Cluster(context.system)
   implicit val actorSelectionOrdering = Ordering.by[ActorSelection, String](as ⇒ as.pathString)
 
   var clusterInfo: Map[Address, Vector[ActorSelection]] = Map() + (cluster.selfAddress → local)

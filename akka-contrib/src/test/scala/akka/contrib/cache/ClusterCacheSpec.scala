@@ -30,7 +30,7 @@ class ClusterCacheSpec extends AkkaSpec(
 
   "ClusterRingListener" should {
 
-    "when they join the cluster I notify new cluster members of my vnodes" in {
+    "when they join the cluster I should notify new cluster members of my vnodes" in {
 
       val selfAddress = system.asInstanceOf[ExtendedActorSystem].provider.getDefaultAddress
 
@@ -48,7 +48,7 @@ class ClusterCacheSpec extends AkkaSpec(
       // val subscriber: ActorRef, val cluster: Cluster) extends UntypedActor with ActorLogging {
 
       val actorRef = TestActorRef[ClusterRingListener](Props(classOf[ClusterRingListener], localVnodes,
-        subscriberProbe.ref, cluster, peerProbe.ref.path))
+        subscriberProbe.ref, peerProbe.ref.path))
 
       val clusterCache = actorRef.underlyingActor
 
@@ -80,7 +80,7 @@ class ClusterCacheSpec extends AkkaSpec(
       // val subscriber: ActorRef, val cluster: Cluster) extends UntypedActor with ActorLogging {
 
       val actorRef = TestActorRef[ClusterRingListener](Props(classOf[ClusterRingListener], localVnodes,
-        subscriberProbe.ref, cluster, peerProbe.ref.path))
+        subscriberProbe.ref, peerProbe.ref.path))
 
       val clusterCache = actorRef.underlyingActor
 
