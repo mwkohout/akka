@@ -3,7 +3,7 @@ package akka.contrib.cache
 import akka.actor._
 import akka.cluster.Cluster
 import akka.routing.ActorSelectionRoutee
-import akka.testkit.{AkkaSpec, TestActorRef, TestProbe}
+import akka.testkit.{ AkkaSpec, TestActorRef, TestProbe }
 import org.scalatest.GivenWhenThen
 import org.scalatest.mockito.MockitoSugar
 import org.scalatest.words.ShouldVerb
